@@ -1,0 +1,115 @@
+# docker-compose.yml — FinTrack local stack
+# Basic:  docker compose up -d
+# Dev UI: docker compose --profile dev up -d
+
+services:
+  # ─── API ──────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: fintrack-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      # Override .env values for Docker networking
+      DATABASE_URL: postgresql://fintrack:fintrack_pass@postgres:5432/fintrack_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: redis_secret
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [fintrack-net]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ─── PostgreSQL ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: fintrack-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: fintrack
+      POSTGRES_PASSWORD: fintrack_pass
+      POSTGRES_DB: fintrack_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [fintrack-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintrack -d fintrack_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: fintrack-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+        --requirepass redis_secret
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --loglevel warning
+    volumes:
+      - redis-data:/data
+    networks: [fintrack-net]
+    healthcheck:
+      # --no-auth-warning suppresses the auth warning in healthcheck output
+      test: ["CMD", "redis-cli", "-a", "redis_secret", "--no-auth-warning", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # ─── MailHog (dev only — email trap) ──────────────────────────────────────
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: fintrack-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI → http://localhost:8025
+    networks: [fintrack-net]
+    profiles: [dev]
+
+  # ─── Redis Commander (dev only — Redis UI) ────────────────────────────────
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: fintrack-redis-ui
+    restart: unless-stopped
+    ports:
+      - "8081:8081"   # Web UI → http://localhost:8081
+    environment:
+      REDIS_HOSTS: local:redis:6379:0:redis_secret
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [fintrack-net]
+    profiles: [dev]
+
+networks:
+  fintrack-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

@@ -1,0 +1,210 @@
+// prisma/schema.prisma
+// Finance Tracking Platform — Database Schema
+// PostgreSQL + Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  VIEWER   // read-only access
+  ANALYST  // read + analytics
+  ADMIN    // full access
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionCategory {
+  SALARY
+  FREELANCE
+  INVESTMENT
+  GIFT
+  REFUND
+  FOOD
+  TRANSPORT
+  HOUSING
+  HEALTH
+  EDUCATION
+  ENTERTAINMENT
+  SHOPPING
+  UTILITIES
+  INSURANCE
+  TAXES
+  OTHER
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  firstName         String    @map("first_name")
+  lastName          String    @map("last_name")
+  role              Role      @default(VIEWER)
+  isEmailVerified   Boolean   @default(false) @map("is_email_verified")
+  emailVerifyToken  String?   @map("email_verify_token")
+  emailVerifyExpiry DateTime? @map("email_verify_expiry")
+  isActive          Boolean   @default(true) @map("is_active")
+  lastLoginAt       DateTime? @map("last_login_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  transactions   Transaction[]
+  refreshTokens  RefreshToken[]
+  passwordResets PasswordReset[]
+  auditLogs      AuditLog[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// AUTH TOKENS
+// ─────────────────────────────────────────────
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  token       String   @unique
+  userId      String   @map("user_id")
+  userAgent   String?  @map("user_agent")
+  ipAddress   String?  @map("ip_address")
+  isRevoked   Boolean  @default(false) @map("is_revoked")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  isUsed    Boolean  @default(false) @map("is_used")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_resets")
+}
+
+// ─────────────────────────────────────────────
+// TRANSACTIONS
+// ─────────────────────────────────────────────
+
+model Transaction {
+  id          String              @id @default(uuid())
+  userId      String              @map("user_id")
+  amount      Decimal             @db.Decimal(15, 2)
+  type        TransactionType
+  category    TransactionCategory
+  description String?
+  tags        String[]            @default([])
+  occurredAt  DateTime            @map("occurred_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  isDeleted   Boolean             @default(false) @map("is_deleted")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Composite indexes for efficient filtering + analytics queries
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([userId, type])
+  @@index([userId, category])
+  @@index([userId, isDeleted, occurredAt(sort: Desc)])
+  @@index([userId, type, occurredAt(sort: Desc)])
+  @@map("transactions")
+}
+
+// ─────────────────────────────────────────────
+// ANALYTICS SNAPSHOTS (pre-aggregated cache)
+// ─────────────────────────────────────────────
+
+model MonthlySnapshot {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  year           Int
+  month          Int
+  totalIncome    Decimal  @default(0) @db.Decimal(15, 2) @map("total_income")
+  totalExpense   Decimal  @default(0) @db.Decimal(15, 2) @map("total_expense")
+  netBalance     Decimal  @default(0) @db.Decimal(15, 2) @map("net_balance")
+  transactionCount Int    @default(0) @map("transaction_count")
+  computedAt     DateTime @default(now()) @map("computed_at")
+
+  @@unique([userId, year, month])
+  @@index([userId, year, month])
+  @@map("monthly_snapshots")
+}
+
+// ─────────────────────────────────────────────
+// BACKGROUND JOBS
+// ─────────────────────────────────────────────
+
+model JobRecord {
+  id          String    @id @default(uuid())
+  jobId       String    @unique @map("job_id")
+  queue       String
+  type        String
+  payload     Json
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([status])
+  @@index([queue, status])
+  @@map("job_records")
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id")
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}

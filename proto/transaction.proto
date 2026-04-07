@@ -1,0 +1,37 @@
+// proto/transaction.proto
+syntax = "proto3";
+
+package fintrack.transaction.v1;
+
+service TransactionService {
+  rpc GetUserBalance (GetUserBalanceRequest) returns (GetUserBalanceResponse);
+  rpc GetRecentTransactions (GetRecentRequest) returns (GetRecentResponse);
+}
+
+message GetUserBalanceRequest {
+  string user_id = 1;
+}
+
+message GetUserBalanceResponse {
+  double total_income  = 1;
+  double total_expense = 2;
+  double net_balance   = 3;
+}
+
+message GetRecentRequest {
+  string user_id = 1;
+  int32  limit   = 2;
+}
+
+message TransactionItem {
+  string id          = 1;
+  double amount      = 2;
+  string type        = 3;
+  string category    = 4;
+  string description = 5;
+  string occurred_at = 6;
+}
+
+message GetRecentResponse {
+  repeated TransactionItem transactions = 1;
+}
