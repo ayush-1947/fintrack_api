@@ -600,7 +600,7 @@ Register a new user account.
 **Request:** `{ "refreshToken": "eyJ..." }`
 **Response `200`:** New token pair (old refresh token is invalidated — rotation)
 
-#### `POST /auth/logout` 🔒
+#### `POST /auth/logout` 
 **Request:** `{ "refreshToken": "eyJ..." }`
 
 #### `GET /auth/verify-email?token=xxx`
@@ -612,12 +612,12 @@ Always returns `200` to prevent email enumeration.
 #### `POST /auth/reset-password`
 **Request:** `{ "token": "uuid", "password": "NewPass1!" }`
 
-#### `GET /auth/me` 🔒
+#### `GET /auth/me` 
 Returns the authenticated user's profile.
 
 ---
 
-### Transaction Endpoints (🔒 Auth Required)
+### Transaction Endpoints ( Auth Required)
 
 #### `POST /transactions`
 ```json
@@ -666,7 +666,7 @@ Returns the authenticated user's profile.
 
 ---
 
-### Analytics Endpoints (🔒 Auth Required, ANALYST+ role)
+### Analytics Endpoints ( Auth Required, ANALYST+ role)
 
 #### `GET /analytics/overview`
 **Query:** `?dateFrom=2024-01-01&dateTo=2024-12-31` (optional)
@@ -871,7 +871,7 @@ graph TB
 
 | Concern | Solution | Notes |
 |---------|----------|-------|
-| **Stateless API** | ✅ No in-memory state | Sessions in Redis, not process memory |
+| **Stateless API** |  No in-memory state | Sessions in Redis, not process memory |
 | **Horizontal API scaling** | Add instances behind LB | JWT verification is local — no session server needed |
 | **Database read load** | Add PostgreSQL read replicas | Route analytics queries to replicas |
 | **Database write load** | Connection pooling (PgBouncer) | Prevent connection exhaustion |
